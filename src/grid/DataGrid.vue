@@ -45,6 +45,7 @@ var emit = defineEmits(["sort", "activate", "select", "filter", "reorder", "cell
 var root = ref(null);
 var scroller = ref(null);
 var hBar = ref({ overflow: false, thumbWidth: 32, thumbLeft: 0 });
+var dragWidth = ref(null);
 var layout = ref(loadLayout(props.identifier));
 var expanded = ref({});
 var selected = ref({});
@@ -153,15 +154,23 @@ function onResizeDown(event, column) {
     var startWidth = headerCell.offsetWidth;
     resizer.classList.add("resizing");
     document.body.style.cursor = "col-resize";
+    function widthAt(pageX) {
+        return Math.max(50, Math.round(startWidth + pageX - startX));
+    }
     function move(moveEvent) {
-        applyColumnWidth(headerCell, startWidth + moveEvent.pageX - startX);
+        var width = widthAt(moveEvent.pageX);
+        dragWidth.value = { dataIndex: column.dataIndex, width: width };
+        applyColumnWidth(headerCell, width);
     }
     function up(upEvent) {
         document.removeEventListener("mousemove", move);
         document.removeEventListener("mouseup", up);
         document.body.style.cursor = "";
         resizer.classList.remove("resizing");
-        persist(resizeColumn(layout.value, column.dataIndex, startWidth + upEvent.pageX - startX));
+        var width = widthAt(upEvent.pageX);
+        dragWidth.value = null;
+        persist(resizeColumn(layout.value, column.dataIndex, width));
+        measureHBar();
     }
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
@@ -295,7 +304,13 @@ function allChecked() {
     return viewRows.value.length > 0 && viewRows.value.every(function (row) { return selected.value[row.id]; });
 }
 
+function shownWidth(column) {
+    if (dragWidth.value && dragWidth.value.dataIndex === column.dataIndex) return dragWidth.value.width;
+    return column.width;
+}
+
 function measureHBar() {
+    if (dragWidth.value) return;
     var el = scroller.value;
     if (!el) return;
     var max = el.scrollWidth - el.clientWidth;
@@ -409,7 +424,7 @@ onBeforeUnmount(function () {
                             v-for="(column, index) in prepared.visible"
                             :key="column.dataIndex"
                             :class="{ pinned: column.pinned }"
-                            :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }"
+                            :style="{ width: shownWidth(column) + 'px', minWidth: shownWidth(column) + 'px', maxWidth: shownWidth(column) + 'px', left: stickyLeft(column, index) }"
                             @dragover.prevent
                             @drop="onDropColumn($event, column)"
                             @contextmenu="openMenu($event, 'header', column)"
@@ -425,7 +440,7 @@ onBeforeUnmount(function () {
                     <tr class="filters">
                         <th v-if="showRowIndexFlag" style="width: 44px; min-width: 44px; max-width: 44px"></th>
                         <th v-if="showSelectionCheckBoxesFlag" style="width: 36px; min-width: 36px; max-width: 36px"></th>
-                        <th v-for="(column, index) in prepared.visible" :key="'filter-' + column.dataIndex" :class="{ pinned: column.pinned }" :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }">
+                        <th v-for="(column, index) in prepared.visible" :key="'filter-' + column.dataIndex" :class="{ pinned: column.pinned }" :style="{ width: shownWidth(column) + 'px', minWidth: shownWidth(column) + 'px', maxWidth: shownWidth(column) + 'px', left: stickyLeft(column, index) }">
                             <input :value="filters[column.dataIndex] || ''" :placeholder="column.typeRepresentation === 'number' ? '&gt; 10' : '필터'" @input="onFilter(column, $event.target.value)" @click.stop>
                         </th>
                         <th v-if="showContextualMenuColumnFlag" style="width: 44px; min-width: 44px; max-width: 44px"></th>
@@ -450,7 +465,7 @@ onBeforeUnmount(function () {
                         <td v-if="showSelectionCheckBoxesFlag" style="width: 36px; min-width: 36px; max-width: 36px">
                             <input type="checkbox" :checked="!!selected[row.id]" @click.stop="onRow(row, $event)">
                         </td>
-                        <td v-for="(column, index) in prepared.visible" :key="column.dataIndex" :class="{ pinned: column.pinned, match: matched(cellValue(column, row.node).label) }" :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }" @dblclick.stop="beginEdit(row, column)">
+                        <td v-for="(column, index) in prepared.visible" :key="column.dataIndex" :class="{ pinned: column.pinned, match: matched(cellValue(column, row.node).label) }" :style="{ width: shownWidth(column) + 'px', minWidth: shownWidth(column) + 'px', maxWidth: shownWidth(column) + 'px', left: stickyLeft(column, index) }" @dblclick.stop="beginEdit(row, column)">
                             <input v-if="editing && editing.id === row.id && editing.dataIndex === column.dataIndex" v-model="editing.value" @keydown.enter.prevent="commitEdit" @blur="commitEdit" @click.stop>
                             <div v-else-if="column.dataIndex === 'tree'" class="tree-cell" :style="{ paddingLeft: row.depth * 16 + 'px' }">
                                 <button v-if="row.hasChildren" type="button" class="twist" :class="{ expanded: row.expanded }" :aria-expanded="row.expanded ? 'true' : 'false'" @click.stop="onTwist(row)"><span class="mark"></span></button>
