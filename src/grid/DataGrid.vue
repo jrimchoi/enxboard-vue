@@ -126,7 +126,7 @@ function stickyLeft(column, index) {
     if (props.showRowIndexFlag) left += 44;
     if (props.showSelectionCheckBoxesFlag) left += 36;
     for (var i = 0; i < index; i += 1) {
-        if (prepared.value.visible[i].pinned) left += prepared.value.visible[i].width;
+        if (prepared.value.visible[i].pinned) left += shownWidth(prepared.value.visible[i]);
     }
     return left + "px";
 }
@@ -142,6 +142,32 @@ function applyColumnWidth(headerCell, width) {
         cell.style.minWidth = px;
         cell.style.maxWidth = px;
     });
+    fitTableToColumns(table);
+}
+
+function fitTableToColumns(table) {
+    var total = 0;
+    Array.prototype.forEach.call(table.rows[0].cells, function (cell) {
+        total += parseFloat(cell.style.width) || 0;
+    });
+    var px = total + "px";
+    table.style.width = px;
+    table.style.minWidth = px;
+    table.style.maxWidth = px;
+}
+
+function tablePixelWidth() {
+    var width = 0;
+    if (props.showRowIndexFlag) width += 44;
+    if (props.showSelectionCheckBoxesFlag) width += 36;
+    prepared.value.visible.forEach(function (column) { width += shownWidth(column); });
+    if (props.showContextualMenuColumnFlag) width += 44;
+    return width;
+}
+
+function tableStyle() {
+    var width = tablePixelWidth();
+    return { width: width + "px", minWidth: width + "px", maxWidth: width + "px" };
 }
 
 function onResizeDown(event, column) {
@@ -413,7 +439,7 @@ onBeforeUnmount(function () {
         </div>
         <div class="enx-grid-frame">
         <div ref="scroller" class="enx-grid-scroll scrollable-table-container-single" @scroll="measureHBar">
-            <table class="enx-grid" :class="{ borders: showColumnBorderFlag, stripes: showAlternateBackgroundFlag }">
+            <table class="enx-grid" :class="{ borders: showColumnBorderFlag, stripes: showAlternateBackgroundFlag }" :style="tableStyle()">
                 <thead>
                     <tr>
                         <th v-if="showRowIndexFlag" class="index" style="width: 44px; min-width: 44px; max-width: 44px"></th>
