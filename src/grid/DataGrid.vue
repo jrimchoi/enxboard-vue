@@ -1,9 +1,11 @@
 <!--
   Vue용 DataGridView다. 열 너비, 순서, 고정, 필터, 정렬, 선택은 grid/model.js가 계산한다.
   React는 DataGrid.jsx, Next는 components/DataGrid.js가 같은 모델을 그린다.
+  스크롤과 열 너비는 team-flow ScrollableTable이 우선이다. 표는 하나고 헤더는 붙는다.
+  헤더와 같은 칸의 본문 셀에 너비, 최소, 최대를 같이 쓴다. 트리, 정렬, 필터, 선택은 그 위에 더한다.
 -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, onUpdated, ref } from "vue";
 import {
     cellValue,
     estimateWidth,
@@ -40,6 +42,7 @@ var props = defineProps({
 });
 var emit = defineEmits(["sort", "activate", "select", "filter", "reorder", "cell-edit"]);
 
+var root = ref(null);
 var layout = ref(loadLayout(props.identifier));
 var expanded = ref({});
 var selected = ref({});
@@ -125,21 +128,41 @@ function stickyLeft(column, index) {
     return left + "px";
 }
 
+// team-flow ScrollableTable과 같다. 헤더와 같은 칸의 본문 셀에 너비·최소·최대를 같이 쓴다.
+function applyColumnWidth(headerCell, width) {
+    var px = Math.max(50, Math.round(width)) + "px";
+    var table = headerCell.closest("table");
+    var index = Array.prototype.indexOf.call(headerCell.parentElement.children, headerCell);
+    [headerCell].concat(Array.prototype.slice.call(table.querySelectorAll("tr")).map(function (row) { return row.children[index]; })).forEach(function (cell) {
+        if (!cell) return;
+        cell.style.width = px;
+        cell.style.minWidth = px;
+        cell.style.maxWidth = px;
+    });
+}
+
 function onResizeDown(event, column) {
     if (column.resizableFlag === false) return;
     event.preventDefault();
     event.stopPropagation();
-    var startX = event.clientX;
-    var startWidth = column.width;
+    var resizer = event.currentTarget;
+    var headerCell = resizer.parentElement;
+    var startX = event.pageX;
+    var startWidth = headerCell.offsetWidth;
+    resizer.classList.add("resizing");
+    document.body.style.cursor = "col-resize";
     function move(moveEvent) {
-        persist(resizeColumn(layout.value, column.dataIndex, startWidth + moveEvent.clientX - startX));
+        applyColumnWidth(headerCell, startWidth + moveEvent.pageX - startX);
     }
-    function up() {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
+    function up(upEvent) {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        document.body.style.cursor = "";
+        resizer.classList.remove("resizing");
+        persist(resizeColumn(layout.value, column.dataIndex, startWidth + upEvent.pageX - startX));
     }
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
 }
 
 function onResizeFit(event, column) {
@@ -270,38 +293,44 @@ function allChecked() {
     return viewRows.value.length > 0 && viewRows.value.every(function (row) { return selected.value[row.id]; });
 }
 
+function applyNativeTitles() {
+    var container = root.value;
+    if (!container) return;
+    container.querySelectorAll("thead th, tbody td").forEach(function (cell) {
+        if (cell.querySelector("a")) return;
+        var text = (cell.textContent || "").trim();
+        if (text) cell.title = text;
+    });
+}
+
 onMounted(function () {
     window.addEventListener("click", closeMenu);
+    applyNativeTitles();
 });
+onUpdated(applyNativeTitles);
 onBeforeUnmount(function () {
     window.removeEventListener("click", closeMenu);
 });
 </script>
 
 <template>
-    <div class="enx-grid-wrap" tabindex="0" @keydown="onKey">
+    <div ref="root" class="enx-grid-wrap" tabindex="0" @keydown="onKey">
         <div class="enx-grid-tools">
             <button type="button" @click.stop="openMenu($event, 'columns', null)">열</button>
         </div>
-        <div class="enx-grid-scroll">
-            <table class="enx-grid" :class="{ borders: showColumnBorderFlag, stripes: showAlternateBackgroundFlag }" :style="{ width: Math.max(prepared.visible.reduce(function (sum, column) { return sum + column.width; }, 120), 640) + 'px' }">
-                <colgroup>
-                    <col v-if="showRowIndexFlag" style="width: 44px">
-                    <col v-if="showSelectionCheckBoxesFlag" style="width: 36px">
-                    <col v-for="column in prepared.visible" :key="column.dataIndex" :style="{ width: column.width + 'px' }">
-                    <col v-if="showContextualMenuColumnFlag" style="width: 44px">
-                </colgroup>
+        <div class="enx-grid-scroll scrollable-table-container-single">
+            <table class="enx-grid" :class="{ borders: showColumnBorderFlag, stripes: showAlternateBackgroundFlag }">
                 <thead>
                     <tr>
-                        <th v-if="showRowIndexFlag"></th>
-                        <th v-if="showSelectionCheckBoxesFlag">
+                        <th v-if="showRowIndexFlag" class="index" style="width: 44px; min-width: 44px; max-width: 44px"></th>
+                        <th v-if="showSelectionCheckBoxesFlag" style="width: 36px; min-width: 36px; max-width: 36px">
                             <input v-if="rowSelection === 'multiple'" type="checkbox" :checked="allChecked()" @click.stop="onSelectAll">
                         </th>
                         <th
                             v-for="(column, index) in prepared.visible"
                             :key="column.dataIndex"
                             :class="{ pinned: column.pinned }"
-                            :style="{ left: stickyLeft(column, index) }"
+                            :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }"
                             @dragover.prevent
                             @drop="onDropColumn($event, column)"
                             @contextmenu="openMenu($event, 'header', column)"
@@ -310,17 +339,17 @@ onBeforeUnmount(function () {
                                 {{ column.text }}
                                 <span v-if="sortMark(column)" class="sort">{{ sortMark(column) }}</span>
                             </button>
-                            <button v-if="column.resizableFlag" type="button" class="resizer" aria-label="열 너비" @pointerdown="onResizeDown($event, column)" @dblclick="onResizeFit($event, column)"></button>
+                            <div v-if="column.resizableFlag" class="column-resizer" @mousedown="onResizeDown($event, column)" @dblclick="onResizeFit($event, column)"></div>
                         </th>
-                        <th v-if="showContextualMenuColumnFlag"></th>
+                        <th v-if="showContextualMenuColumnFlag" style="width: 44px; min-width: 44px; max-width: 44px"></th>
                     </tr>
                     <tr class="filters">
-                        <th v-if="showRowIndexFlag"></th>
-                        <th v-if="showSelectionCheckBoxesFlag"></th>
-                        <th v-for="column in prepared.visible" :key="'filter-' + column.dataIndex">
+                        <th v-if="showRowIndexFlag" style="width: 44px; min-width: 44px; max-width: 44px"></th>
+                        <th v-if="showSelectionCheckBoxesFlag" style="width: 36px; min-width: 36px; max-width: 36px"></th>
+                        <th v-for="(column, index) in prepared.visible" :key="'filter-' + column.dataIndex" :class="{ pinned: column.pinned }" :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }">
                             <input :value="filters[column.dataIndex] || ''" :placeholder="column.typeRepresentation === 'number' ? '&gt; 10' : '필터'" @input="onFilter(column, $event.target.value)" @click.stop>
                         </th>
-                        <th v-if="showContextualMenuColumnFlag"></th>
+                        <th v-if="showContextualMenuColumnFlag" style="width: 44px; min-width: 44px; max-width: 44px"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -335,14 +364,14 @@ onBeforeUnmount(function () {
                         @dragover.prevent
                         @drop="onDropRow($event, row)"
                     >
-                        <td v-if="showRowIndexFlag" class="index">
+                        <td v-if="showRowIndexFlag" class="index" style="width: 44px; min-width: 44px; max-width: 44px">
                             <button v-if="rowDragEnabledFlag" type="button" class="drag" draggable="true" @dragstart.stop="onDragRowStart($event, row)" @click.stop>≡</button>
                             {{ rowIndex + 1 }}
                         </td>
-                        <td v-if="showSelectionCheckBoxesFlag">
+                        <td v-if="showSelectionCheckBoxesFlag" style="width: 36px; min-width: 36px; max-width: 36px">
                             <input type="checkbox" :checked="!!selected[row.id]" @click.stop="onRow(row, $event)">
                         </td>
-                        <td v-for="(column, index) in prepared.visible" :key="column.dataIndex" :class="{ pinned: column.pinned, match: matched(cellValue(column, row.node).label) }" :style="{ left: stickyLeft(column, index) }" @dblclick.stop="beginEdit(row, column)">
+                        <td v-for="(column, index) in prepared.visible" :key="column.dataIndex" :class="{ pinned: column.pinned, match: matched(cellValue(column, row.node).label) }" :style="{ width: column.width + 'px', minWidth: column.width + 'px', maxWidth: column.width + 'px', left: stickyLeft(column, index) }" @dblclick.stop="beginEdit(row, column)">
                             <input v-if="editing && editing.id === row.id && editing.dataIndex === column.dataIndex" v-model="editing.value" @keydown.enter.prevent="commitEdit" @blur="commitEdit" @click.stop>
                             <div v-else-if="column.dataIndex === 'tree'" class="tree-cell" :style="{ paddingLeft: row.depth * 16 + 'px' }">
                                 <button v-if="row.hasChildren" type="button" class="twist" :class="{ expanded: row.expanded }" :aria-expanded="row.expanded ? 'true' : 'false'" @click.stop="onTwist(row)"><span class="mark"></span></button>
@@ -352,7 +381,7 @@ onBeforeUnmount(function () {
                             <button v-else-if="cellValue(column, row.node).func" type="button" class="link" @click.stop="onActivate(row, column)">{{ cellValue(column, row.node).label }}</button>
                             <span v-else>{{ cellValue(column, row.node).label }}</span>
                         </td>
-                        <td v-if="showContextualMenuColumnFlag">
+                        <td v-if="showContextualMenuColumnFlag" style="width: 44px; min-width: 44px; max-width: 44px">
                             <button type="button" class="row-menu" @click.stop="openMenu($event, 'row', row)">⋯</button>
                         </td>
                     </tr>
