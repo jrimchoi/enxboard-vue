@@ -5,7 +5,7 @@
  * 글 목록은 이 컴포저블 안에만 있다. define이나 require는 없다.
  */
 import { onMounted, reactive } from "vue";
-import { PAGE_SIZE, createPost, deletePost, normalize, pageOf, updatePost } from "../domain";
+import { PAGE_SIZE, createPost, deletePost, findPost, normalize, pageOf, updatePost } from "../domain";
 import { bindWidget } from "../widget";
 
 export function useBoard() {
@@ -13,6 +13,7 @@ export function useBoard() {
         screen: "list",
         query: "",
         page: 1,
+        sort: [{ dataIndex: "date", sort: "desc" }],
         posts: [],
         list: null,
         post: null,
@@ -25,7 +26,7 @@ export function useBoard() {
     var widget = null;
 
     function showList() {
-        var list = pageOf(state.posts, state.page, PAGE_SIZE, state.query);
+        var list = pageOf(state.posts, state.page, PAGE_SIZE, state.query, state.sort);
         state.screen = "list";
         state.list = list;
         state.page = list.page;
@@ -34,9 +35,7 @@ export function useBoard() {
     }
 
     function showDetail(id) {
-        var found = state.posts.find(function (post) {
-            return post.id === id;
-        });
+        var found = findPost(state.posts, id);
         if (!found) {
             state.errors = ["글을 찾지 못했습니다."];
             return;
@@ -58,6 +57,12 @@ export function useBoard() {
         }
         if (command === "page") {
             state.page = payload.page;
+            showList();
+            return;
+        }
+        if (command === "sort") {
+            state.sort = payload.sortModel && payload.sortModel.length ? payload.sortModel : [{ dataIndex: "date", sort: "desc" }];
+            state.page = 1;
             showList();
             return;
         }

@@ -7,6 +7,14 @@
 <script setup>
 import { reactive, watch } from "vue";
 import { useBoard } from "./composables/useBoard";
+import DataGrid from "./grid/DataGrid.vue";
+
+var columns = [
+    { text: "제목", dataIndex: "tree" },
+    { text: "작성자", dataIndex: "author" },
+    { text: "날짜", dataIndex: "date" },
+    { text: "태그", dataIndex: "tags" },
+];
 
 var board = useBoard();
 var state = board.state;
@@ -63,20 +71,16 @@ function onSave() {
             </form>
             <p class="count">전체 {{ state.list.total }}건, {{ state.list.page }} / {{ state.list.pageCount }}쪽</p>
             <div class="grid-host">
-                <table>
-                    <thead>
-                        <tr><th>제목</th><th>작성자</th><th>날짜</th><th>태그</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr v-if="!state.list.items.length"><td colspan="4" class="empty">검색 결과가 없습니다.</td></tr>
-                        <tr v-for="post in state.list.items" :key="post.id">
-                            <td><button type="button" class="link" @click="board.handle('open', { id: post.id })">{{ post.title }}</button></td>
-                            <td>{{ post.author }}</td>
-                            <td>{{ post.date }}</td>
-                            <td>{{ post.tags.join(", ") }}</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <DataGrid
+                    :rows="state.list.items"
+                    :columns="columns"
+                    :sort-model="state.sort"
+                    row-selection="single"
+                    :show-selection-check-boxes-flag="true"
+                    @sort="board.handle('sort', { sortModel: $event })"
+                    empty-text="검색 결과가 없습니다."
+                    @activate="board.handle('open', { id: $event.node.id })"
+                />
             </div>
             <div class="pager">
                 <button type="button" :disabled="state.list.page <= 1" @click="board.handle('page', { page: state.list.page - 1 })"><i class="wux-ui-3ds wux-ui-3ds-left" aria-hidden="true"></i> 이전</button>
