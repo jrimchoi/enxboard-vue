@@ -4,6 +4,8 @@
  * 화면 상태는 composables/useBoard.js의 reactive가 가진다.
  * React 앱은 useState, Next 앱은 pages의 useState가 같은 규칙을 각자 구현한다.
  */
+import { matchesColumnFilter } from "./grid/model.js";
+
 export const PAGE_SIZE = 5;
 
 export function normalize(raw) {
@@ -74,12 +76,28 @@ function textOf(post) {
     return [post.title, post.author, post.content, (post.tags || []).join(" ")].join(" ").toLowerCase();
 }
 
-function keepMatch(post, needle) {
-    if (!needle) return stored(post);
+function activeFilters(filters) {
+    return Object.keys(filters || {}).filter(function (key) {
+        return String(filters[key] || "").trim();
+    });
+}
+
+function passesFilters(post, filters) {
+    var keys = activeFilters(filters);
+    for (var index = 0; index < keys.length; index += 1) {
+        var key = keys[index];
+        var value = key === "tree" ? post.title : key === "tags" ? (post.tags || []).join(", ") : post[key];
+        if (!matchesColumnFilter(value, filters[key], key === "date" ? "date" : "string")) return false;
+    }
+    return true;
+}
+
+function keepMatch(post, needle, filters) {
+    if (!needle && !activeFilters(filters).length) return stored(post);
     var children = (post.children || []).map(function (child) {
-        return keepMatch(child, needle);
+        return keepMatch(child, needle, filters);
     }).filter(Boolean);
-    if (textOf(post).indexOf(needle) !== -1) return stored(post);
+    if ((!needle || textOf(post).indexOf(needle) !== -1) && passesFilters(post, filters)) return stored(post);
     if (!children.length) return null;
     var copy = stored(post);
     copy.children = children;
@@ -126,11 +144,11 @@ function replacePost(posts, id, mapper) {
     return { found: found, posts: next };
 }
 
-export function pageOf(posts, page, pageSize, query, sortModel) {
+export function pageOf(posts, page, pageSize, query, sortModel, filters) {
     var size = pageSize > 0 ? pageSize : PAGE_SIZE;
     var needle = String(query || "").trim().toLowerCase();
     var matched = (posts || []).map(function (post) {
-        return keepMatch(post, needle);
+        return keepMatch(post, needle, filters);
     }).filter(Boolean);
     matched = sortPosts(matched, sortModel);
     var total = matched.length;
@@ -190,6 +208,50 @@ function withoutPost(posts, id) {
         next.push(copy);
     });
     return { found: found, posts: next };
+}
+
+function parentOf(posts, id, parent) {
+    for (var index = 0; index < (posts || []).length; index += 1) {
+        if (posts[index].id === id) return parent || "";
+        var below = parentOf(posts[index].children, id, posts[index].id);
+        if (below !== null) return below;
+    }
+    return null;
+}
+
+export function movePost(posts, id, beforeId) {
+    if (!id || !beforeId || id === beforeId) return { ok: false, posts: posts };
+    if (parentOf(posts, id, "") !== parentOf(posts, beforeId, "")) return { ok: false, posts: posts };
+    var removed = null;
+    function strip(list) {
+        return (list || []).map(function (post) {
+            if (post.id === id) {
+                removed = stored(post);
+                return null;
+            }
+            var copy = stored(post);
+            copy.children = strip(copy.children);
+            return copy;
+        }).filter(Boolean);
+    }
+    function insert(list) {
+        var index = (list || []).findIndex(function (post) {
+            return post.id === beforeId;
+        });
+        if (index >= 0) {
+            var next = list.slice();
+            next.splice(index, 0, removed);
+            return next;
+        }
+        return (list || []).map(function (post) {
+            var copy = stored(post);
+            copy.children = insert(copy.children);
+            return copy;
+        });
+    }
+    var stripped = strip(posts);
+    if (!removed) return { ok: false, posts: posts };
+    return { ok: true, posts: insert(stripped) };
 }
 
 export function deletePost(posts, id) {

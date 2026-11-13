@@ -10,10 +10,10 @@ import { useBoard } from "./composables/useBoard";
 import DataGrid from "./grid/DataGrid.vue";
 
 var columns = [
-    { text: "제목", dataIndex: "tree" },
-    { text: "작성자", dataIndex: "author" },
-    { text: "날짜", dataIndex: "date" },
-    { text: "태그", dataIndex: "tags" },
+    { text: "제목", dataIndex: "tree", width: 280, editableFlag: true },
+    { text: "작성자", dataIndex: "author", width: 120, editableFlag: true },
+    { text: "날짜", dataIndex: "date", typeRepresentation: "date", width: 120, editableFlag: true },
+    { text: "태그", dataIndex: "tags", width: 160, editableFlag: true },
 ];
 
 var board = useBoard();
@@ -72,13 +72,18 @@ function onSave() {
             <p class="count">전체 {{ state.list.total }}건, {{ state.list.page }} / {{ state.list.pageCount }}쪽</p>
             <div class="grid-host">
                 <DataGrid
+                    identifier="enxboard"
                     :rows="state.list.items"
                     :columns="columns"
                     :sort-model="state.sort"
-                    row-selection="single"
-                    :show-selection-check-boxes-flag="true"
-                    @sort="board.handle('sort', { sortModel: $event })"
+                    :filters="state.filters"
+                    :find-query="state.query"
+                    row-selection="multiple"
                     empty-text="검색 결과가 없습니다."
+                    @sort="board.handle('sort', { sortModel: $event })"
+                    @filter="board.handle('filter', { filters: $event })"
+                    @reorder="board.handle('reorder', $event)"
+                    @cell-edit="board.handle('cell-edit', $event)"
                     @activate="board.handle('open', { id: $event.node.id })"
                 />
             </div>

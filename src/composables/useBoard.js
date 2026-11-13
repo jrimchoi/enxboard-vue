@@ -5,7 +5,7 @@
  * 글 목록은 이 컴포저블 안에만 있다. define이나 require는 없다.
  */
 import { onMounted, reactive } from "vue";
-import { PAGE_SIZE, createPost, deletePost, findPost, normalize, pageOf, updatePost } from "../domain";
+import { PAGE_SIZE, createPost, deletePost, findPost, movePost, normalize, pageOf, updatePost } from "../domain";
 import { bindWidget } from "../widget";
 
 export function useBoard() {
@@ -14,6 +14,7 @@ export function useBoard() {
         query: "",
         page: 1,
         sort: [{ dataIndex: "date", sort: "desc" }],
+        filters: {},
         posts: [],
         list: null,
         post: null,
@@ -26,7 +27,7 @@ export function useBoard() {
     var widget = null;
 
     function showList() {
-        var list = pageOf(state.posts, state.page, PAGE_SIZE, state.query, state.sort);
+        var list = pageOf(state.posts, state.page, PAGE_SIZE, state.query, state.sort, state.filters);
         state.screen = "list";
         state.list = list;
         state.page = list.page;
@@ -63,6 +64,42 @@ export function useBoard() {
         if (command === "sort") {
             state.sort = payload.sortModel && payload.sortModel.length ? payload.sortModel : [{ dataIndex: "date", sort: "desc" }];
             state.page = 1;
+            showList();
+            return;
+        }
+        if (command === "filter") {
+            state.filters = payload.filters || {};
+            state.page = 1;
+            showList();
+            return;
+        }
+        if (command === "reorder") {
+            var moved = movePost(state.posts, payload.id, payload.beforeId);
+            if (!moved.ok) return;
+            state.posts = moved.posts;
+            showList();
+            return;
+        }
+        if (command === "cell-edit") {
+            var currentPost = findPost(state.posts, payload.id);
+            if (!currentPost) return;
+            var fields = {
+                title: currentPost.title,
+                author: currentPost.author,
+                date: currentPost.date,
+                content: currentPost.content,
+                tags: currentPost.tags.slice(),
+            };
+            if (payload.dataIndex === "tree") fields.title = payload.value;
+            else if (payload.dataIndex === "tags") fields.tags = payload.value;
+            else fields[payload.dataIndex] = payload.value;
+            var edited = updatePost(state.posts, payload.id, fields);
+            if (!edited.ok) {
+                state.errors = edited.errors;
+                return;
+            }
+            state.posts = edited.posts;
+            state.notice = "칸을 수정했습니다.";
             showList();
             return;
         }
