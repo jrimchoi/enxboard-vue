@@ -1,11 +1,17 @@
 {
+  "name": "enxboard-vue",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "serve --no-clipboard -l tcp://0.0.0.0:${PORT:-3000} .",
-    "start": "serve --no-clipboard -l tcp://0.0.0.0:${PORT:-3000} ."
+    "dev": "vite --host 0.0.0.0 --port ${PORT:-3000}",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port ${PORT:-3000}"
   },
   "dependencies": {
-    "serve": "14.2.4"
+    "vue": "3.4.15"
   },
-  "name": "enxboard-vue"
+  "devDependencies": {
+    "@vitejs/plugin-vue": "5.1.4",
+    "vite": "5.4.11"
+  }
 }

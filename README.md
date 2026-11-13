@@ -1,12 +1,14 @@
 # ENXBoardVue
 
-같은 게시판의 Vue 3 화면이다. 단일 파일 컴포넌트가 아니라 문자열 템플릿이고, `vendor/vue/vue.js` 전체 빌드의 런타임 컴파일러가 그 문자열을 렌더 함수로 바꾼다. `vue.runtime`만 있으면 이 템플릿은 동작하지 않는다.
+같은 게시판을 Vue 3 앱으로 만든 것이다. 단일 파일 컴포넌트와 `reactive`를 쓰고, AMD 모듈은 없다.
 
-상태는 `Vue.reactive` 한 객체다. 공유 컨트롤러가 필드를 바꾸면 템플릿이 다시 그려진다. React처럼 `render`를 직접 호출하지 않는다.
+화면은 `src/Board.vue`다. 목록, 상세, 등록, 수정, 삭제, 검색, 5건 쪽 나눔은 `src/composables/useBoard.js`가 상태로 가진다. 검사와 정렬은 `src/domain.js`의 함수다. 글은 `public/data/posts.json`을 읽어 메모리에만 둔다. 아이콘 글꼴은 `public/core`에 있다.
 
 ## StackBlitz
 
 https://stackblitz.com/fork/github/jrimchoi/enxboard-vue
+
+Vite 개발 서버가 열리고 미리보기는 `/`다.
 
 ## 로컬
 
@@ -24,9 +26,9 @@ npm run dev
 
 | 경로 | 역할 |
 |---|---|
-| `js/view.js` | Vue 3 문자열 템플릿 |
-| `js/app.js` | `reactive` 상태와 공유 컨트롤러 |
-| `js/loader.js` | AMD 로더 |
-| `vendor/vue/vue.js` | Vue 3.4.15 전체 빌드 |
-| `vendor/enxboard` | 글 모델, 목록, 저장, 명령, 위젯, 스타일, 목 데이터 |
-| `vendor/core` | 아이콘 CSS와 글꼴 |
+| `src/main.js` | `createApp` |
+| `src/Board.vue` | 템플릿과 입력 |
+| `src/composables/useBoard.js` | 화면 상태. Vue `reactive` |
+| `src/domain.js` | 검색, 쪽, 검사, 저장 |
+| `src/widget.js` | 목 셸의 위젯 이벤트 |
+| `src/styles/board.css` | 화면 골격 |
