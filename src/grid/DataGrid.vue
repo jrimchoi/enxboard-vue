@@ -43,6 +43,8 @@ var props = defineProps({
 var emit = defineEmits(["sort", "activate", "select", "filter", "reorder", "cell-edit"]);
 
 var root = ref(null);
+var scroller = ref(null);
+var hBar = ref({ overflow: false, thumbWidth: 32, thumbLeft: 0 });
 var layout = ref(loadLayout(props.identifier));
 var expanded = ref({});
 var selected = ref({});
@@ -293,6 +295,65 @@ function allChecked() {
     return viewRows.value.length > 0 && viewRows.value.every(function (row) { return selected.value[row.id]; });
 }
 
+function measureHBar() {
+    var el = scroller.value;
+    if (!el) return;
+    var max = el.scrollWidth - el.clientWidth;
+    var overflow = max > 1;
+    var track = el.clientWidth;
+    var thumbWidth = overflow ? Math.max(32, Math.round(track * el.clientWidth / el.scrollWidth)) : 0;
+    var thumbLeft = overflow ? Math.round((el.scrollLeft / max) * Math.max(0, track - thumbWidth)) : 0;
+    var prev = hBar.value;
+    if (prev.overflow === overflow && prev.thumbWidth === thumbWidth && prev.thumbLeft === thumbLeft) return;
+    hBar.value = { overflow: overflow, thumbWidth: thumbWidth, thumbLeft: thumbLeft };
+}
+
+function onGridWheel(event) {
+    var el = scroller.value;
+    if (!el) return;
+    var max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) return;
+    var delta = 0;
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) delta = event.deltaX;
+    else if (event.shiftKey) delta = event.deltaY;
+    else if (el.scrollHeight <= el.clientHeight + 1) delta = event.deltaY;
+    if (!delta) return;
+    event.preventDefault();
+    el.scrollLeft = Math.max(0, Math.min(max, el.scrollLeft + delta));
+    measureHBar();
+}
+
+function onHScrollDown(event) {
+    var el = scroller.value;
+    if (!el || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var track = event.currentTarget.getBoundingClientRect();
+    var max = el.scrollWidth - el.clientWidth;
+    var thumb = hBar.value.thumbWidth;
+    var travel = Math.max(1, track.width - thumb);
+    var pointer = event.clientX - track.left;
+    var onThumb = pointer >= hBar.value.thumbLeft && pointer <= hBar.value.thumbLeft + thumb;
+    if (!onThumb) {
+        el.scrollLeft = Math.max(0, Math.min(max, ((pointer - thumb / 2) / travel) * max));
+        measureHBar();
+    }
+    var startX = event.clientX;
+    var startLeft = el.scrollLeft;
+    event.currentTarget.classList.add("dragging");
+    function move(moveEvent) {
+        el.scrollLeft = Math.max(0, Math.min(max, startLeft + ((moveEvent.clientX - startX) * max) / travel));
+        measureHBar();
+    }
+    function up() {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        if (event.currentTarget) event.currentTarget.classList.remove("dragging");
+    }
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+}
+
 function applyNativeTitles() {
     var container = root.value;
     if (!container) return;
@@ -306,10 +367,27 @@ function applyNativeTitles() {
 onMounted(function () {
     window.addEventListener("click", closeMenu);
     applyNativeTitles();
+    var el = scroller.value;
+    if (!el) return;
+    el.addEventListener("wheel", onGridWheel, { passive: false });
+    if (window.ResizeObserver) {
+        var observer = new ResizeObserver(measureHBar);
+        observer.observe(el);
+        if (el.firstElementChild) observer.observe(el.firstElementChild);
+        el._hObserver = observer;
+    }
+    measureHBar();
 });
-onUpdated(applyNativeTitles);
+onUpdated(function () {
+    applyNativeTitles();
+    measureHBar();
+});
 onBeforeUnmount(function () {
     window.removeEventListener("click", closeMenu);
+    var el = scroller.value;
+    if (!el) return;
+    el.removeEventListener("wheel", onGridWheel);
+    if (el._hObserver) el._hObserver.disconnect();
 });
 </script>
 
@@ -318,7 +396,8 @@ onBeforeUnmount(function () {
         <div class="enx-grid-tools">
             <button type="button" @click.stop="openMenu($event, 'columns', null)">열</button>
         </div>
-        <div class="enx-grid-scroll scrollable-table-container-single">
+        <div class="enx-grid-frame">
+        <div ref="scroller" class="enx-grid-scroll scrollable-table-container-single" @scroll="measureHBar">
             <table class="enx-grid" :class="{ borders: showColumnBorderFlag, stripes: showAlternateBackgroundFlag }">
                 <thead>
                     <tr>
@@ -387,6 +466,10 @@ onBeforeUnmount(function () {
                     </tr>
                 </tbody>
             </table>
+        </div>
+        <div v-show="hBar.overflow" class="enx-hscroll" role="scrollbar" aria-orientation="horizontal" aria-label="가로 스크롤" @mousedown="onHScrollDown">
+            <div class="enx-hscroll-thumb" :style="{ width: hBar.thumbWidth + 'px', left: hBar.thumbLeft + 'px' }"></div>
+        </div>
         </div>
         <div v-if="menu" class="enx-grid-menu" :style="{ left: menu.x + 'px', top: menu.y + 'px' }" @click.stop>
             <template v-if="menu.kind === 'header'">
